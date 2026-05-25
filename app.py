@@ -5,8 +5,8 @@ from PyPDF2 import PdfReader
 import re
 import io
 
-st.set_page_config(page_title="Enterprise SOP vs RCM", layout="wide")
-st.title("🧠 Enterprise SOP vs RCM Analyzer (No AI Required)")
+st.set_page_config(page_title="Enterprise SOP and RCM", layout="wide")
+st.title("Enterprise SOP and RCM Analyzer")
 
 # -----------------------------------
 # EXTRACT TEXT
@@ -174,7 +174,7 @@ if st.button("Run Analysis"):
         all_sop = "\n".join(sop_texts)
         sop_chunks = chunk_text(all_sop)
 
-        st.write(f"📊 SOP chunks detected: {len(sop_chunks)}")
+        st.write(f"SOP chunks detected: {len(sop_chunks)}")
 
         results = []
 
@@ -216,7 +216,7 @@ if st.button("Run Analysis"):
             else "Low"
         )
 
-        st.success(f"✅ Analysis Completed ({len(df)} points)")
+        st.success(f"Analysis Completed ({len(df)} points)")
         st.dataframe(df)
 
         # -----------------------------------
@@ -238,7 +238,7 @@ if st.button("Run Analysis"):
         excel_data = output.getvalue()
 
         st.download_button(
-            label="📥 Download Excel Report",
+            label="Download Excel Report",
             data=excel_data,
             file_name="SOP_RCM_Analysis.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
