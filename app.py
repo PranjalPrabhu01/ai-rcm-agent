@@ -28,15 +28,20 @@ def extract_text(file):
 # CHUNK TEXT INTO STATEMENTS
 # -----------------------------------
 def chunk_text(text):
-    parts = re.split(r"\n|\•|-", text)
+    parts = re.split(r"\n|\•|-|\.", text)
     return [p.strip() for p in parts if len(p.strip()) > 40]
 
 # -----------------------------------
 # IDENTIFY CONTROL STATEMENTS
 # -----------------------------------
 def is_control_statement(text):
-    keywords = ["shall", "must", "should", "required", "at least", "minimum"]
-    return any(k in text.lower() for k in keywords)
+    text = text.lower()
+    control_signals = [
+"shall", "must", "should", "required", "needs to", 
+        "has to", "ensure", "responsible", "obligated",
+        "at least", "minimum", "required to"
+ ]
+    return any(signal in text for signal in control_signals)
 
 # -----------------------------------
 # GENERATE CONTROL SUGGESTION
@@ -193,3 +198,16 @@ if st.button("Run Analysis"):
 
     else:
         st.error("Please upload at least one file.")
+
+
+if len(results) == 0:
+    st.warning("⚠ No strict control statements found — showing all relevant lines")
+
+    for sop in sop_chunks[:30]:
+        match, issue, suggestion = compare(sop, rcm_rows)
+        results.append({
+            "SOP Statement": sop,
+            "Best Match in RCM": match,
+            "Issue": issue,
+            "Exact Recommendation": suggestion
+        })
