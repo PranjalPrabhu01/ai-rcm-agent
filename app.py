@@ -3,12 +3,13 @@ import pandas as pd
 from docx import Document
 from PyPDF2 import PdfReader
 import re
+import io
 
 st.set_page_config(page_title="Enterprise SOP vs RCM", layout="wide")
 st.title("🧠 Enterprise SOP vs RCM Analyzer (No AI Required)")
 
 # -----------------------------------
-# EXTRACT TEXT FROM FILES
+# EXTRACT TEXT
 # -----------------------------------
 def extract_text(file):
     text = ""
@@ -26,7 +27,7 @@ def extract_text(file):
 
 
 # -----------------------------------
-# CHUNK TEXT INTO STATEMENTS
+# CHUNK TEXT
 # -----------------------------------
 def chunk_text(text):
     parts = re.split(r"\n|\•|-|\.", text)
@@ -34,22 +35,23 @@ def chunk_text(text):
 
 
 # -----------------------------------
-# IDENTIFY CONTROL STATEMENTS
+# CONTROL DETECTION
 # -----------------------------------
 def is_control_statement(text):
     text = text.lower()
 
-    control_signals = [
+    signals = [
         "shall", "must", "should", "required",
-        "needs to", "has to", "ensure", "responsible",
-        "obligated", "at least", "minimum", "required to"
+        "needs to", "has to", "ensure",
+        "responsible", "obligated",
+        "at least", "minimum"
     ]
 
-    return any(signal in text for signal in control_signals)
+    return any(s in text for s in signals)
 
 
 # -----------------------------------
-# GENERATE CONTROL SUGGESTION
+# GENERATE CONTROL (KEY FEATURE)
 # -----------------------------------
 def generate_control(sop):
 
@@ -60,13 +62,13 @@ def generate_control(sop):
     frequency = ""
     evidence = "and retain evidence"
 
-    # detect owner
+    # Owner
     if "buyer" in sop_lower:
         owner = "Buyer"
     elif "manager" in sop_lower:
         owner = "Manager"
 
-    # detect action
+    # Action
     if "review" in sop_lower:
         action = "review the process"
     elif "communicate" in sop_lower:
@@ -74,21 +76,19 @@ def generate_control(sop):
     elif "invite" in sop_lower:
         action = "invite vendors"
     elif "evaluate" in sop_lower:
-        action = "evaluate vendor proposals"
+        action = "evaluate vendors"
     elif "conduct" in sop_lower:
         action = "conduct auction"
-    elif "approve" in sop_lower:
-        action = "approve transactions"
 
-    # detect frequency
+    # Frequency
     if "year" in sop_lower:
         frequency = "annually"
     elif "day" in sop_lower:
         frequency = "at least 1 day before event"
-    elif "weekly" in sop_lower:
-        frequency = "weekly"
-
-    # detect threshold
+    elif "hour" in sop_lower:
+        frequency = "within defined time"
+    
+    # Threshold rule
     if "at least 3" in sop_lower or "minimum 3" in sop_lower:
         return "Auction shall be conducted only if at least 3 vendors participate."
 
@@ -100,12 +100,12 @@ def generate_control(sop):
 # -----------------------------------
 def get_keywords(text):
     words = text.lower().split()
-    important = ["vendor", "auction", "price", "bid", "review", "approve", "communication"]
-    return [w for w in words if w in important]
+    key_terms = ["vendor", "auction", "price", "bid", "review", "communication"]
+    return [w for w in words if w in key_terms]
 
 
 # -----------------------------------
-# COMPARE SOP VS RCM
+# MATCH ENGINE
 # -----------------------------------
 def compare(sop, rcm_rows):
 
@@ -135,17 +135,17 @@ def compare(sop, rcm_rows):
 
 
 # -----------------------------------
-# FILE UPLOAD (MULTIPLE)
+# UPLOAD FILES
 # -----------------------------------
 uploaded_files = st.file_uploader(
-    "Upload Files (SOP, RCM, Framework - Multiple Allowed)",
+    "Upload SOP / RCM / Framework Files",
     type=["pdf", "docx", "xlsx"],
     accept_multiple_files=True
 )
 
 
 # -----------------------------------
-# RUN ANALYSIS
+# RUN
 # -----------------------------------
 if st.button("Run Analysis"):
 
@@ -154,7 +154,7 @@ if st.button("Run Analysis"):
         sop_texts = []
         rcm_rows = []
 
-        # classify files
+        # FILE CLASSIFICATION
         for file in uploaded_files:
 
             if file.name.endswith(".xlsx"):
@@ -166,20 +166,19 @@ if st.button("Run Analysis"):
                 text = extract_text(file)
 
                 if "risk" in text.lower() and "control" in text.lower():
-                    chunks = chunk_text(text)
-                    rcm_rows.extend(chunks)
+                    rcm_rows.extend(chunk_text(text))
                 else:
                     sop_texts.append(text)
 
-        # merge SOPs
+        # MERGE SOP
         all_sop = "\n".join(sop_texts)
         sop_chunks = chunk_text(all_sop)
 
-        st.write(f"📊 Total SOP chunks found: {len(sop_chunks)}")
+        st.write(f"📊 SOP chunks detected: {len(sop_chunks)}")
 
         results = []
 
-        # MAIN control detection
+        # PRIMARY ANALYSIS
         for sop in sop_chunks:
 
             if not is_control_statement(sop):
@@ -189,35 +188,61 @@ if st.button("Run Analysis"):
 
             results.append({
                 "SOP Statement": sop,
-                "Best Match in RCM": match,
+                "Best Match": match,
                 "Issue": issue,
-                "Exact Recommendation": suggestion
+                "Recommendation": suggestion
             })
 
-        # ✅ FALLBACK (IMPORTANT FIX)
+        # ✅ FALLBACK LOGIC
         if len(results) == 0:
-            st.warning("⚠ No strict control statements found — showing fallback results")
+            st.warning("⚠ No strict controls found — using fallback mode")
 
             for sop in sop_chunks[:30]:
                 match, issue, suggestion = compare(sop, rcm_rows)
 
                 results.append({
                     "SOP Statement": sop,
-                    "Best Match in RCM": match,
+                    "Best Match": match,
                     "Issue": issue,
-                    "Exact Recommendation": suggestion
+                    "Recommendation": suggestion
                 })
 
         df = pd.DataFrame(results)
 
-        st.success(f"✅ Analysis Completed ({len(df)} points found)")
+        # ✅ PRIORITY COLUMN
+        df["Priority"] = df["Issue"].apply(
+            lambda x: "High" if x == "Missing control"
+            else "Medium" if x == "Weak control"
+            else "Low"
+        )
+
+        st.success(f"✅ Analysis Completed ({len(df)} points)")
         st.dataframe(df)
 
-        # download
-        df.to_excel("final_rcm_output.xlsx", index=False)
+        # -----------------------------------
+        # ✅ EXCEL DOWNLOAD (MULTI-SHEET)
+        # -----------------------------------
+        output = io.BytesIO()
 
-        with open("final_rcm_output.xlsx", "rb") as f:
-            st.download_button("📥 Download Report", f)
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False, sheet_name="All Results")
+
+            df[df["Issue"]=="Missing control"].to_excel(
+                writer, index=False, sheet_name="Missing Controls"
+            )
+
+            df[df["Issue"]=="Weak control"].to_excel(
+                writer, index=False, sheet_name="Weak Controls"
+            )
+
+        excel_data = output.getvalue()
+
+        st.download_button(
+            label="📥 Download Excel Report",
+            data=excel_data,
+            file_name="SOP_RCM_Analysis.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
     else:
-        st.error("Please upload at least one file.")
+        st.error("Please upload files first.")
