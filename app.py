@@ -24,6 +24,7 @@ def extract_text(file):
 
     return text
 
+
 # -----------------------------------
 # CHUNK TEXT INTO STATEMENTS
 # -----------------------------------
@@ -31,17 +32,21 @@ def chunk_text(text):
     parts = re.split(r"\n|\•|-|\.", text)
     return [p.strip() for p in parts if len(p.strip()) > 40]
 
+
 # -----------------------------------
 # IDENTIFY CONTROL STATEMENTS
 # -----------------------------------
 def is_control_statement(text):
     text = text.lower()
+
     control_signals = [
-"shall", "must", "should", "required", "needs to", 
-        "has to", "ensure", "responsible", "obligated",
-        "at least", "minimum", "required to"
- ]
+        "shall", "must", "should", "required",
+        "needs to", "has to", "ensure", "responsible",
+        "obligated", "at least", "minimum", "required to"
+    ]
+
     return any(signal in text for signal in control_signals)
+
 
 # -----------------------------------
 # GENERATE CONTROL SUGGESTION
@@ -89,6 +94,7 @@ def generate_control(sop):
 
     return f"{owner} shall {action} {frequency} {evidence}."
 
+
 # -----------------------------------
 # KEYWORD MATCHING
 # -----------------------------------
@@ -96,6 +102,7 @@ def get_keywords(text):
     words = text.lower().split()
     important = ["vendor", "auction", "price", "bid", "review", "approve", "communication"]
     return [w for w in words if w in important]
+
 
 # -----------------------------------
 # COMPARE SOP VS RCM
@@ -115,7 +122,6 @@ def compare(sop, rcm_rows):
             score = match_score
             best_match = row
 
-    # issue classification
     if score == 0:
         issue = "Missing control"
     elif score == 1:
@@ -127,6 +133,7 @@ def compare(sop, rcm_rows):
 
     return best_match, issue, suggestion
 
+
 # -----------------------------------
 # FILE UPLOAD (MULTIPLE)
 # -----------------------------------
@@ -135,6 +142,7 @@ uploaded_files = st.file_uploader(
     type=["pdf", "docx", "xlsx"],
     accept_multiple_files=True
 )
+
 
 # -----------------------------------
 # RUN ANALYSIS
@@ -158,7 +166,6 @@ if st.button("Run Analysis"):
                 text = extract_text(file)
 
                 if "risk" in text.lower() and "control" in text.lower():
-                    # treat as RCM-like doc
                     chunks = chunk_text(text)
                     rcm_rows.extend(chunks)
                 else:
@@ -168,11 +175,13 @@ if st.button("Run Analysis"):
         all_sop = "\n".join(sop_texts)
         sop_chunks = chunk_text(all_sop)
 
+        st.write(f"📊 Total SOP chunks found: {len(sop_chunks)}")
+
         results = []
 
+        # MAIN control detection
         for sop in sop_chunks:
 
-            # skip non-controls
             if not is_control_statement(sop):
                 continue
 
@@ -185,9 +194,23 @@ if st.button("Run Analysis"):
                 "Exact Recommendation": suggestion
             })
 
+        # ✅ FALLBACK (IMPORTANT FIX)
+        if len(results) == 0:
+            st.warning("⚠ No strict control statements found — showing fallback results")
+
+            for sop in sop_chunks[:30]:
+                match, issue, suggestion = compare(sop, rcm_rows)
+
+                results.append({
+                    "SOP Statement": sop,
+                    "Best Match in RCM": match,
+                    "Issue": issue,
+                    "Exact Recommendation": suggestion
+                })
+
         df = pd.DataFrame(results)
 
-        st.success(f"✅ Analysis Completed ({len(df)} control points found)")
+        st.success(f"✅ Analysis Completed ({len(df)} points found)")
         st.dataframe(df)
 
         # download
@@ -198,16 +221,3 @@ if st.button("Run Analysis"):
 
     else:
         st.error("Please upload at least one file.")
-
-
-if len(results) == 0:
-    st.warning("⚠ No strict control statements found — showing all relevant lines")
-
-    for sop in sop_chunks[:30]:
-        match, issue, suggestion = compare(sop, rcm_rows)
-        results.append({
-            "SOP Statement": sop,
-            "Best Match in RCM": match,
-            "Issue": issue,
-            "Exact Recommendation": suggestion
-        })
