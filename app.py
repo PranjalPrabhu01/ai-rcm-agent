@@ -4,113 +4,65 @@ from docx import Document
 from PyPDF2 import PdfReader
 import re
 
-st.title("📊 SOP and RCM Analyzer")
+st.set_page_config(page_title="Enterprise SOP vs RCM", layout="wide")
+st.title("🧠 Enterprise SOP vs RCM Analyzer (No AI Required)")
 
-# ---------------------
-# Extract text
-# ---------------------
+# -----------------------------------
+# EXTRACT TEXT FROM FILES
+# -----------------------------------
 def extract_text(file):
+    text = ""
+
     if file.name.endswith(".docx"):
         doc = Document(file)
-        return "\n".join([p.text for p in doc.paragraphs])
-    else:
-        reader = PdfReader(file)
-        return "".join([p.extract_text() or "" for p in reader.pages])
+        text = "\n".join([p.text for p in doc.paragraphs])
 
-# ---------------------
-# Chunk SOP
-# ---------------------
+    elif file.name.endswith(".pdf"):
+        reader = PdfReader(file)
+        for page in reader.pages:
+            text += page.extract_text() or ""
+
+    return text
+
+# -----------------------------------
+# CHUNK TEXT INTO STATEMENTS
+# -----------------------------------
 def chunk_text(text):
     parts = re.split(r"\n|\•|-", text)
     return [p.strip() for p in parts if len(p.strip()) > 40]
 
-# ---------------------
-# Detect keywords
-# ---------------------
-def detect_keywords(text):
-    keywords = []
-    
-    if "vendor" in text.lower():
-        keywords.append("vendor")
-    if "auction" in text.lower():
-        keywords.append("auction")
-    if "price" in text.lower():
-        keywords.append("price")
-    if "minimum" in text.lower() or "at least" in text.lower():
-        keywords.append("threshold")
-    
-    return keywords
+# -----------------------------------
+# IDENTIFY CONTROL STATEMENTS
+# -----------------------------------
+def is_control_statement(text):
+    keywords = ["shall", "must", "should", "required", "at least", "minimum"]
+    return any(k in text.lower() for k in keywords)
 
-# ---------------------
-# Compare logic
-# ---------------------
-def compare(sop, rcm_rows):
+# -----------------------------------
+# GENERATE CONTROL SUGGESTION
+# -----------------------------------
+def generate_control(sop):
 
-    sop_keys = detect_keywords(sop)
+    sop_lower = sop.lower()
 
-    best_match = ""
-    match_score = 0
+    owner = "Process owner"
+    action = "perform control"
+    frequency = ""
+    evidence = "and retain evidence"
 
-    for row in rcm_rows:
-        score = sum(k in row.lower() for k in sop_keys)
+    # detect owner
+    if "buyer" in sop_lower:
+        owner = "Buyer"
+    elif "manager" in sop_lower:
+        owner = "Manager"
 
-        if score > match_score:
-            match_score = score
-            best_match = row
-
-    # Rules
-    if match_score == 0:
-        issue = "Missing control"
-        suggestion = "Add control based on SOP"
-    
-    elif match_score < 2:
-        issue = "Weak match"
-        suggestion = "Improve wording and coverage"
-    
-    else:
-        issue = "Related"
-        suggestion = "OK or improve clarity"
-
-    return best_match, issue, suggestion
-
-# ---------------------
-# UI
-# ---------------------
-sop_file = st.file_uploader("Upload SOP", type=["pdf", "docx"])
-rcm_file = st.file_uploader("Upload RCM", type=["xlsx"])
-
-if st.button("Run Analysis"):
-
-    if sop_file and rcm_file:
-
-        sop_text = extract_text(sop_file)
-        sop_chunks = chunk_text(sop_text)
-
-        rcm_df = pd.read_excel(rcm_file)
-        rcm_rows = rcm_df.astype(str).agg(" | ".join, axis=1).tolist()
-
-        results = []
-
-        for sop in sop_chunks:
-
-            match, issue, suggestion = compare(sop, rcm_rows)
-
-            results.append({
-                "SOP": sop,
-                "Best Match": match,
-                "Issue": issue,
-                "Suggestion": suggestion
-            })
-
-        df = pd.DataFrame(results)
-
-        st.success("✅ Analysis Complete")
-        st.dataframe(df)
-
-        df.to_excel("output.xlsx", index=False)
-
-        with open("output.xlsx", "rb") as f:
-            st.download_button("Download Report", f)
-
-    else:
-        st.error("Upload both files")
+    # detect action
+    if "review" in sop_lower:
+        action = "review the process"
+    elif "communicate" in sop_lower:
+        action = "communicate details to vendors"
+    elif "invite" in sop_lower:
+        action = "invite vendors"
+    elif "evaluate" in sop_lower:
+        action = "evaluate vendor proposals"
+    elif "conduct" in sop_lower:
