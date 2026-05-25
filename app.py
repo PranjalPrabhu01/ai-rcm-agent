@@ -3,13 +3,8 @@ import pandas as pd
 from docx import Document
 from PyPDF2 import PdfReader
 import re
-from openai import OpenAI
-import os
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
-st.set_page_config(page_title="AI SOP vs RCM", layout="wide")
-st.title("🧠 SOP vs RCM AI Agent")
+st.title("📊 SOP and RCM Analyzer")
 
 # ---------------------
 # Extract text
@@ -20,23 +15,69 @@ def extract_text(file):
         return "\n".join([p.text for p in doc.paragraphs])
     else:
         reader = PdfReader(file)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() or ""
-        return text
+        return "".join([p.extract_text() or "" for p in reader.pages])
 
 # ---------------------
 # Chunk SOP
 # ---------------------
 def chunk_text(text):
-    chunks = re.split(r"\n|\•|-", text)
-    return [c.strip() for c in chunks if len(c.strip()) > 40]
+    parts = re.split(r"\n|\•|-", text)
+    return [p.strip() for p in parts if len(p.strip()) > 40]
+
+# ---------------------
+# Detect keywords
+# ---------------------
+def detect_keywords(text):
+    keywords = []
+    
+    if "vendor" in text.lower():
+        keywords.append("vendor")
+    if "auction" in text.lower():
+        keywords.append("auction")
+    if "price" in text.lower():
+        keywords.append("price")
+    if "minimum" in text.lower() or "at least" in text.lower():
+        keywords.append("threshold")
+    
+    return keywords
+
+# ---------------------
+# Compare logic
+# ---------------------
+def compare(sop, rcm_rows):
+
+    sop_keys = detect_keywords(sop)
+
+    best_match = ""
+    match_score = 0
+
+    for row in rcm_rows:
+        score = sum(k in row.lower() for k in sop_keys)
+
+        if score > match_score:
+            match_score = score
+            best_match = row
+
+    # Rules
+    if match_score == 0:
+        issue = "Missing control"
+        suggestion = "Add control based on SOP"
+    
+    elif match_score < 2:
+        issue = "Weak match"
+        suggestion = "Improve wording and coverage"
+    
+    else:
+        issue = "Related"
+        suggestion = "OK or improve clarity"
+
+    return best_match, issue, suggestion
 
 # ---------------------
 # UI
 # ---------------------
-sop_file = st.file_uploader("Upload SOP (PDF/DOCX)", type=["pdf", "docx"])
-rcm_file = st.file_uploader("Upload RCM Excel", type=["xlsx"])
+sop_file = st.file_uploader("Upload SOP", type=["pdf", "docx"])
+rcm_file = st.file_uploader("Upload RCM", type=["xlsx"])
 
 if st.button("Run Analysis"):
 
@@ -50,47 +91,20 @@ if st.button("Run Analysis"):
 
         results = []
 
-        for sop in sop_chunks[:30]:  # limit for cost control
+        for sop in sop_chunks:
 
-            prompt = f"""
-You are an audit expert.
-
-SOP:
-{sop}
-
-RCM:
-{rcm_rows[:5]}
-
-Return:
-- Relationship: Related / Not related
-- Missing points
-- Incorrect points
-- Suggested edits
-- Justification (quote SOP)
-
-Output JSON.
-"""
-
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    temperature=0.1,
-                    messages=[{"role": "user", "content": prompt}]
-                )
-
-                output = response.choices[0].message.content
-
-            except Exception as e:
-                output = str(e)
+            match, issue, suggestion = compare(sop, rcm_rows)
 
             results.append({
                 "SOP": sop,
-                "AI Analysis": output
+                "Best Match": match,
+                "Issue": issue,
+                "Suggestion": suggestion
             })
 
         df = pd.DataFrame(results)
 
-        st.success("✅ Done")
+        st.success("✅ Analysis Complete")
         st.dataframe(df)
 
         df.to_excel("output.xlsx", index=False)
